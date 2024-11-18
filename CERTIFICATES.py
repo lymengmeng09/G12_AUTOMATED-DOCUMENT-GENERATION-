@@ -103,3 +103,11 @@ generate_button.pack(pady=50)
 
 # Run the Tkinter event loop
 root.mainloop()
+
+
+def select_file(file_type, file_extensions, title):
+    """Prompt the user to select a file and return the file path."""
+    file_path = filedialog.askopenfilename(
+        title=title,
+        filetypes=[(file_type, file_extensions), ("All files", "*.*")]
+    )
