@@ -103,3 +103,5 @@ generate_button.pack(pady=50)
 
 # Run the Tkinter event loop
 root.mainloop()
+
+# sor
