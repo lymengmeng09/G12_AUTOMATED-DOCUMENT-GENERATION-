@@ -1,105 +1,93 @@
 import openpyxl
 from docxtpl import DocxTemplate
-import tkinter as tk
-from tkinter import filedialog, messagebox
+import os
+from docx2pdf import convert
+from datetime import date
+
+# Load data from Excel
+def load_excel_data(filename):
+    workbook = openpyxl.load_workbook(filename)
+    sheet = workbook.active
+    return list(sheet.values)
 
 
-def select_file(file_type, file_extensions, title):
-    """Prompt the user to select a file and return the file path."""
-    file_path = filedialog.askopenfilename(
-        title=title,
-        filetypes=[(file_type, file_extensions), ("All files", "*.*")]
-    )
-    if not file_path:
-        messagebox.showwarning("No File Selected", f"Please select a {file_type.lower()} file.")
-    return file_path
+# Prepare context for template rendering
+def prepare_context(template_keys, row_data):
+    if len(row_data) < len(template_keys):
+        row_data = row_data + ("",) * (len(template_keys) - len(row_data))
+        # Add the current date to the context with the key "cur_date"
+    context = {template_keys[i]: row_data[i] for i in range(len(template_keys))}
+    context["cur_date"] = date.today().strftime("%d-%m-%y")  # Use desired date format (e.g., YYYY-MM-DD)
+    return context
 
 
-def load_excel_file(file_path):
-    """Load the Excel file and return the active sheet."""
-    try:
-        workbook = openpyxl.load_workbook(file_path)
-        return workbook.active
-    except Exception as e:
-        messagebox.showerror("Invalid File", "The selected file is not a valid Excel file.")
-        return None
+# Render a Word document
+def render_document(template_path, context, output_path):
+    doc = DocxTemplate(template_path)
+    doc.render(context)
+    doc.save(output_path)
+    print(f"Document saved: {output_path}")
 
 
-def validate_excel_data(sheet):
-    """Validate the structure of the Excel data."""
-    data = list(sheet.values)
-    if len(data) < 2 or len(data[0]) < 3:
-        messagebox.showerror("Invalid File Structure", "The Excel file must contain at least three columns (e.g., student name, teacher name, leader name) with data.")
-        return None
-    return data
+# Generate Word documents
+def generate_documents(excel_file, word_template, output_dir):
+    # Define the template variable keys
+    template_keys = [
+        "student_id", "first_name", "last_name", "logic", "l_g", "bcum", "bc_g", "design", 
+        "d_g", "p1", "p1_g", "e1", "e1_g", "wd", "wd_g", "algo", "al_g", "p2", "p2_g", "e2", 
+        "e2_g", "sd", "sd_g", "js", "js_g", "php", "ph_g", "db", "db_g", "vc1", "v1_g", "node", 
+        "no_g", "e3", "e3_g", "p3", "p3_g", "oop", "op_g", "lar", "lar_g", "vue", "vu_g", "vc2", 
+        "v2_g", "e4", "e4_g", "p4", "p4_g", "int", "in_g"
+    ]
+
+    # Load data from the Excel file
+    data = load_excel_data(excel_file)
+
+    # Skip the header row and process each student
+    for row in data[1:]:
+        # Prepare context for the current row
+        context = prepare_context(template_keys, row)
+
+        # Generate output file name
+        output_name = f"{context['first_name']}_{context['last_name']}.docx"
+        output_path = os.path.join(output_dir, output_name)
+
+        # Render and save the Word document
+        render_document(word_template, context, output_path)
 
 
-def load_word_template(file_path):
-    """Load the Word template and return the DocxTemplate object."""
-    try:
-        return DocxTemplate(file_path)
-    except Exception as e:
-        messagebox.showerror("Invalid File", "The selected file is not a valid Word template.")
-        return None
+# Convert Word documents to PDF in a new folder
+def convert_docx_to_pdf(input_dir, output_dir):
+    # Create output directory for PDFs if it doesn't exist
+    os.makedirs(output_dir, exist_ok=True)
+
+    # Loop through all .docx files in the input directory
+    for file in os.listdir(input_dir):
+        if file.endswith(".docx"):
+            docx_path = os.path.join(input_dir, file)
+            pdf_path = os.path.join(output_dir, file.replace(".docx", ".pdf"))
+            # Convert each .docx file to a PDF
+            convert(docx_path, pdf_path)
+            print(f"Converted to PDF: {pdf_path}")
 
 
-def generate_personalized_documents(student_data, word_template):
-    """Generate Word documents for each student."""
-    for student in student_data[1:]:  # Skip the header row
-        try:
-            word_template.render({
-                'student_name': student[0],
-                'teacher_name': student[1],
-                'leader_name': student[2],
-            })
-            output_file = f"{student[0]}.docx"
-            word_template.save(output_file)
-        except Exception as e:
-            messagebox.showerror("Error Generating Document", f"An error occurred while generating the document for {student[0]}: {str(e)}")
-            continue
+# Main function
+def main():
+    # Input and output file paths
+    excel_file = "data.xlsx"
+    word_template = "template-pnc.docx"
+    output_dir = "Academic_Transcripts"
+    pdf_output_dir = "Academic_Transcript_PDF"
+
+    # Create output directory for Word documents if it doesn't exist
+    os.makedirs(output_dir, exist_ok=True)
+
+    # Generate Word documents
+    generate_documents(excel_file, word_template, output_dir)
+
+    # Convert generated Word documents to PDF in a separate folder
+    convert_docx_to_pdf(output_dir, pdf_output_dir)
 
 
-def generate_documents():
-    """Main function to generate documents."""
-    try:
-        # Step 1: Select and validate Excel file
-        excel_path = select_file("Excel File", "*.xlsx", "Select the Excel File")
-        if not excel_path:
-            return
-
-        sheet = load_excel_file(excel_path)
-        if not sheet:
-            return
-
-        student_data = validate_excel_data(sheet)
-        if not student_data:
-            return
-
-        # Step 2: Select and validate Word template
-        word_template_path = select_file("Word Template", "*.docx", "Select the Word Template File")
-        if not word_template_path:
-            return
-
-        word_template = load_word_template(word_template_path)
-        if not word_template:
-            return
-
-        # Step 3: Generate documents
-        generate_personalized_documents(student_data, word_template)
-
-        messagebox.showinfo("Success", "Documents generated successfully!")
-    except Exception as e:
-        messagebox.showerror("Unexpected Error", f"An unexpected error occurred: {str(e)}")
-
-
-# Tkinter GUI setup
-root = tk.Tk()
-root.title("Document Generator")
-root.geometry("400x200")
-
-# Create and place the button
-generate_button = tk.Button(root, text="Generate Documents", command=generate_documents, width=30, height=2, bg="lightblue")
-generate_button.pack(pady=50)
-
-# Run the Tkinter event loop
-root.mainloop()
+if __name__ == "__main__":
+    main()
