@@ -1,107 +1,74 @@
 import openpyxl
 from docxtpl import DocxTemplate
-import tkinter as tk
-from tkinter import filedialog, messagebox
+from docx2pdf import convert
+import os
+from datetime import date
 
+def load_excel_data(excel_file):
+    workbook = openpyxl.load_workbook(excel_file)
+    sheet = workbook.active
+    return list(sheet.values)
 
-def select_file(file_type, file_extensions, title):
-    """Prompt the user to select a file and return the file path."""
-    file_path = filedialog.askopenfilename(
-        title=title,
-        filetypes=[(file_type, file_extensions), ("All files", "*.*")]
-    )
-    if not file_path:
-        messagebox.showwarning("No File Selected", f"Please select a {file_type.lower()} file.")
-    return file_path
+def setup_output_directories():
+    word_dir = os.path.join("word_files")
+    pdf_dir = os.path.join("pdf_files")
+    os.makedirs(word_dir, exist_ok=True)
+    os.makedirs(pdf_dir, exist_ok=True)
+    return word_dir, pdf_dir
 
+def prepare_context(template_keys, row_data):
+    if len(row_data) < len(template_keys):
+        row_data = row_data + ("",) * (len(template_keys) - len(row_data))
+    context = {template_keys[i]: row_data[i] for i in range(len(template_keys))}
+    context["cur_date"] = date.today().strftime("%Y-%m-%d")
+    return context
 
-def load_excel_file(file_path):
-    """Load the Excel file and return the active sheet."""
+def generate_word_certificate(template, data, word_dir):
+    safe_name = str(data["name_e"]).strip().replace("/", "_").replace("\\", "_")
+    word_path = os.path.join(word_dir, f"{safe_name}.docx")
+    template.render(data)
+    template.save(word_path)
+    print(f"Created Word document: {word_path}")
+    return word_path
+
+def convert_to_pdf(word_path, pdf_dir):
+    safe_name = os.path.splitext(os.path.basename(word_path))[0]
+    pdf_path = os.path.join(pdf_dir, f"{safe_name}.pdf")
+    convert(word_path, pdf_path)
+    print(f"Created PDF document: {pdf_path}")
+
+def generate_certificates(excel_file, template_file):
+    if not os.path.exists(excel_file):
+        print(f"Excel file not found: {excel_file}")
+        return
+
+    if not os.path.exists(template_file):
+        print(f"Template file not found: {template_file}")
+        return
     try:
-        workbook = openpyxl.load_workbook(file_path)
-        return workbook.active
+        data = load_excel_data(excel_file)
     except Exception as e:
-        messagebox.showerror("Invalid File", "The selected file is not a valid Excel file.")
-        return None
+        print(f"Error loading Excel file: {e}")
+        return
 
+    word_dir, pdf_dir = setup_output_directories()
+    template = DocxTemplate(template_file)
+    template_keys = ["name_kh", "name_e", "g1", "g2", "id_kh", "id_e", "dob_kh", "dob_e", "pro_kh", "pro_e", "ed_kh", "ed_e"]
 
-def validate_excel_data(sheet):
-    """Validate the structure of the Excel data."""
-    data = list(sheet.values)
-    if len(data) < 2 or len(data[0]) < 3:
-        messagebox.showerror("Invalid File Structure", "The Excel file must contain at least three columns (e.g., student name, teacher name, leader name) with data.")
-        return None
-    return data
-
-
-def load_word_template(file_path):
-    """Load the Word template and return the DocxTemplate object."""
-    try:
-        return DocxTemplate(file_path)
-    except Exception as e:
-        messagebox.showerror("Invalid File", "The selected file is not a valid Word template.")
-        return None
-
-
-def generate_personalized_documents(student_data, word_template):
-    """Generate Word documents for each student."""
-    for student in student_data[1:]:  # Skip the header row
+    for row in data[1:]:
         try:
-            word_template.render({
-                'student_name': student[0],
-                'teacher_name': student[1],
-                'leader_name': student[2],
-            })
-            output_file = f"{student[0]}.docx"
-            word_template.save(output_file)
+            if len(row) < 2 or not row[1]:
+                print(f"Skipping invalid or incomplete row: {row}")
+                continue
+
+            template_data = prepare_context(template_keys, row)
+            word_path = generate_word_certificate(template, template_data, word_dir)
+            convert_to_pdf(word_path, pdf_dir)
         except Exception as e:
-            messagebox.showerror("Error Generating Document", f"An error occurred while generating the document for {student[0]}: {str(e)}")
+            print(f"Error processing row {row}: {e}")
             continue
 
+    print("All certificates have been successfully generated!")
 
-def generate_documents():
-    """Main function to generate documents."""
-    try:
-        # Step 1: Select and validate Excel file
-        excel_path = select_file("Excel File", "*.xlsx", "Select the Excel File")
-        if not excel_path:
-            return
-
-        sheet = load_excel_file(excel_path)
-        if not sheet:
-            return
-
-        student_data = validate_excel_data(sheet)
-        if not student_data:
-            return
-
-        # Step 2: Select and validate Word template
-        word_template_path = select_file("Word Template", "*.docx", "Select the Word Template File")
-        if not word_template_path:
-            return
-
-        word_template = load_word_template(word_template_path)
-        if not word_template:
-            return
-
-        # Step 3: Generate documents
-        generate_personalized_documents(student_data, word_template)
-
-        messagebox.showinfo("Success", "Documents generated successfully!")
-    except Exception as e:
-        messagebox.showerror("Unexpected Error", f"An unexpected error occurred: {str(e)}")
-
-
-# Tkinter GUI setup
-root = tk.Tk()
-root.title("Document Generator")
-root.geometry("400x200")
-
-# Create and place the button
-generate_button = tk.Button(root, text="Generate Documents", command=generate_documents, width=30, height=2, bg="lightblue")
-generate_button.pack(pady=50)
-
-# Run the Tkinter event loop
-root.mainloop()
-
-# sor
+# Usage
+generate_certificates("Book1.xlsx", "Certificate.docx")
